@@ -99,7 +99,7 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 	}
 
 	//either releases a tuple along with the other tuples from its k-anonymized cluster, or the tuple gets suppressed and then released
-	private void generalizeTuple(Tuple2<Tuple, Long> t){
+	public void generalizeTuple(Tuple2<Tuple, Long> t){
 		if(this.bufferedTuples.size() < this.k - 1){
 			//in this case we can't form a new k-anonymized cluster around the tuple
 			//so either we reuse an old cluster or suppress the tuple
@@ -156,7 +156,7 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 
 
 	//finds the k-1 NNs with unique PIDs of t
-	private Tuple2<Tuple, Long>[] knn(Tuple2<Tuple, Long> t){
+	public Tuple2<Tuple, Long>[] knn(Tuple2<Tuple, Long> t){
 		Tuple3<Tuple2<Tuple, Long>, Tuple, Tuple2<Double, Double>[]>[] toBeSorted = new Tuple3[this.bufferedTuples.size()];
 
 		//retrieve and sort all the tuples by their distance to t
@@ -193,7 +193,7 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 	}
 
 	//finds amongst all buffered clusters the cluster that fits t and has minimal information loss
-	private Cluster findFittingOldCluster(Tuple t){
+	public Cluster findFittingOldCluster(Tuple t){
 		Iterator<Tuple2<Cluster, Long>> it = this.bufferedClusters.iterator();
 		Cluster minC = null;
 		while(it.hasNext()){
@@ -209,7 +209,7 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 	}
 
 	//returns a tuple, the entries of which correspond to the global bounds encountered during the whole processing duration
-	private Tuple suppress(Tuple t){
+	public Tuple suppress(Tuple t){
 		Tuple newT = Tuple.newInstance(t.getArity());
 		newT.setField(this.globalBounds[0], 0);
 
