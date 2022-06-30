@@ -18,6 +18,7 @@
 
 package spendreport;
 
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.api.java.tuple.Tuple2;
@@ -45,7 +46,8 @@ public class TransactionGeneralizationJob {
 		keys[0] = 0;
 		DataStream<Tuple> generalizedTransactions = transactions
 			.map(value -> new Tuple2<Tuple, Long>(new Tuple3<>(value.getAmount(), value.getTimestamp(), value.getAccountId()), System.currentTimeMillis()))
-			.process(new Generalizer(10,5000, 5000, keys))
+				.returns(Types.TUPLE()) //needed, bc in the lambda function type info gts lost
+			.process(new Generalizer(10,30, 60000, keys, 2))
 			.name("Generalizer");
 
 		/*alerts

@@ -1,24 +1,56 @@
 package spendreport;
 
-import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple;
-import org.apache.flink.util.StringUtils;
-import scala.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple2;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.PriorityQueue;
+public class Cluster{
 
-public class Cluster<T> {
+    Tuple2<Double, Double>[] bounds;
 
-    public Cluster(){
-    }
+    public Cluster(Tuple[] tuples, int[] keys){
+        this.bounds = new Tuple2[keys.length];
 
-    static class ElementComparator implements Comparator<Tuple2<?, Long>> {
-
-        @Override
-        public int compare(Tuple2<?, Long> o1, Tuple2<?, Long> o2) {
-            return o1._2.longValue() > o2._2.longValue() ? 1 : -1;
+        //find global bounds per dimension to enclose all the tuples
+        double currMin = Double.POSITIVE_INFINITY;
+        double currMax = Double.NEGATIVE_INFINITY;
+        for(int i = 0; i < tuples.length; i++){
+            if(currMin > (double) tuples[i].getField(0)) currMin = tuples[i].getField(0); //update minimum
+            if(currMax < (double) tuples[i].getField(0)) currMax = tuples[i].getField(0); //update maximum
         }
+
+        this.bounds[0] = new Tuple2<>(currMin, currMax);
     }
+
+    public Cluster(Tuple2<Tuple, Long>[] tuples, int[] keys){
+        this.bounds = new Tuple2[keys.length];
+
+        //find global bounds per dimension to enclose all the tuples
+        double currMin = Double.POSITIVE_INFINITY;
+        double currMax = Double.NEGATIVE_INFINITY;
+        for(int i = 0; i < tuples.length; i++){
+            if(currMin > (double) tuples[i].f0.getField(0)) currMin = tuples[i].f0.getField(0); //update minimum
+            if(currMax < (double) tuples[i].f0.getField(0)) currMax = tuples[i].f0.getField(0); //update maximum
+        }
+
+        this.bounds[0] = new Tuple2<>(currMin, currMax);
+    }
+
+    //checks wether t lies within the bounds of each dimension
+    public boolean fits(Tuple t){
+
+        return (double) t.getField(0) > this.bounds[0].f0 && (double) t.getField(0) < this.bounds[0].f1;
+    }
+
+    //returns a tuple, the entries of which correspond to the bounds of this cluster
+    public Tuple generalize(Tuple t){
+        Tuple newT = Tuple.newInstance(t.getArity());
+        newT.setField(this.bounds[0], 0);
+
+        return newT;
+    }
+
+    public double infoLoss(Tuple2<Double, Double>[] globalBounds){
+        return (this.bounds[0].f1 - this.bounds[0].f0) / (globalBounds[0].f1 - globalBounds[0].f0);
+    }
+
 }
