@@ -44,10 +44,10 @@ public class TransactionGeneralizationJob {
 
 		int[] keys = new int[1];
 		keys[0] = 0;
-		DataStream<Tuple> generalizedTransactions = transactions
-			.map(value -> new Tuple2<Tuple, Long>(new Tuple3<>(value.getAmount(), value.getTimestamp(), value.getAccountId()), System.currentTimeMillis()))
+		DataStream<Tuple3> generalizedTransactions = transactions
+			.map(value -> new Tuple2<Tuple3, Long>(new Tuple3<>(value.getAmount(), value.getTimestamp(), value.getAccountId()), System.currentTimeMillis()))
 				.returns(Types.TUPLE()) //needed, bc in the lambda function type info gts lost
-			.process(new Generalizer(10,30, 60000, keys, 2))
+			.process(new Generalizer<>(10,30, 60000, keys, 2))
 			.name("Generalizer");
 
 		/*alerts

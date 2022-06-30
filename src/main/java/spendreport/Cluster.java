@@ -3,11 +3,11 @@ package spendreport;
 import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.api.java.tuple.Tuple2;
 
-public class Cluster{
+public class Cluster<T extends Tuple>{
 
     Tuple2<Double, Double>[] bounds;
 
-    public Cluster(Tuple[] tuples, int[] keys){
+    public Cluster(T[] tuples, int[] keys){
         this.bounds = new Tuple2[keys.length];
 
         //find global bounds per dimension to enclose all the tuples
@@ -21,7 +21,7 @@ public class Cluster{
         this.bounds[0] = new Tuple2<>(currMin, currMax);
     }
 
-    public Cluster(Tuple2<Tuple, Long>[] tuples, int[] keys){
+    public Cluster(Tuple2<T, Long>[] tuples, int[] keys){
         this.bounds = new Tuple2[keys.length];
 
         //find global bounds per dimension to enclose all the tuples
@@ -36,14 +36,14 @@ public class Cluster{
     }
 
     //checks wether t lies within the bounds of each dimension
-    public boolean fits(Tuple t){
+    public boolean fits(T t){
 
         return (double) t.getField(0) > this.bounds[0].f0 && (double) t.getField(0) < this.bounds[0].f1;
     }
 
     //returns a tuple, the entries of which correspond to the bounds of this cluster
-    public Tuple generalize(Tuple t){
-        Tuple newT = Tuple.newInstance(t.getArity());
+    public T generalize(T t){
+        T newT = (T) Tuple.newInstance(t.getArity());
         newT.setField(this.bounds[0], 0);
 
         return newT;

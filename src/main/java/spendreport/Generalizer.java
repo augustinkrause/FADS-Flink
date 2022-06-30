@@ -30,7 +30,7 @@ import java.util.*;
 /**
  *
  */
-public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
+public class Generalizer<T extends Tuple> extends ProcessFunction<Tuple2<T, Long>, T> {
 
 	int k;
 	long bufferConstraint;
@@ -41,10 +41,10 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 
 	Tuple2<Double, Double>[] globalBounds;
 
-	PriorityQueue<Tuple2<Tuple, Long>> bufferedTuples;
-	PriorityQueue<Tuple2<Cluster, Long>> bufferedClusters;
+	PriorityQueue<Tuple2<T, Long>> bufferedTuples;
+	PriorityQueue<Tuple2<Cluster<T>, Long>> bufferedClusters;
 
-	Stack<Tuple> toBeReleasedTuples = new Stack<>(); //during processing of the stream tuples will be added to this, at the end of processing the stack will be emptied
+	Stack<T> toBeReleasedTuples = new Stack<>(); //during processing of the stream tuples will be added to this, at the end of processing the stack will be emptied
 
 	public Generalizer(int k, long bufferConstraint, long reuseConstraint, int[] keys, int pidKey){
 		this.k = k;
@@ -56,7 +56,7 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 		this.pidKey = pidKey;
 
 		bufferedTuples = new PriorityQueue<>(new EnrichedTupleComparator()); //so that our tuples are always sorted by our used notion of time
-		this.bufferedClusters = new PriorityQueue<Tuple2<Cluster, Long>>(new EnrichedTupleComparator());
+		this.bufferedClusters = new PriorityQueue<>(new EnrichedTupleComparator());
 	}
 	// This hook is executed before the processing starts, kind of as a set-up
 	@Override
@@ -67,9 +67,9 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 	// This hook is executed on each element of the data stream
 	@Override
 	public void processElement(
-			Tuple2<Tuple, Long> element,
+			Tuple2<T, Long> element,
 			Context context,
-			Collector<Tuple> collector) throws Exception {
+			Collector<T> collector) throws Exception {
 
 		//buffer incoming tuple
 		bufferedTuples.add(element);
@@ -99,54 +99,54 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 	}
 
 	//either releases a tuple along with the other tuples from its k-anonymized cluster, or the tuple gets suppressed and then released
-	private void generalizeTuple(Tuple2<Tuple, Long> t){
+	private void generalizeTuple(Tuple2<T, Long> t){
 		if(this.bufferedTuples.size() < this.k - 1){
 			//in this case we can't form a new k-anonymized cluster around the tuple
 			//so either we reuse an old cluster or suppress the tuple
-			Cluster minC = this.findFittingOldCluster(t.f0);
+			Cluster<T> minC = this.findFittingOldCluster(t.f0);
 			if(minC != null){
 				//release tuple with an old cluster, that has minimal information loss
-				Tuple newT = minC.generalize(t.f0);
+				T newT = minC.generalize(t.f0);
 				this.toBeReleasedTuples.add(newT);
 			}else{
 				//suppress tuple
-				Tuple newT = this.suppress(t.f0);
+				T newT = this.suppress(t.f0);
 				this.toBeReleasedTuples.add(newT);
 			}
 		}else{
 			//find k-1 NNs with unique PIDs of t
-			Tuple2<Tuple, Long>[] neighbours = this.knn(t);
-			Cluster knnC = null;
+			Tuple2<T, Long>[] neighbours = this.knn(t.f0);
+			Cluster<T> knnC = null;
 			if(neighbours != null){
-				knnC = new Cluster(neighbours, this.keys);
+				knnC = new Cluster<T>(neighbours, this.keys);
 			}
 
 			//find old cluster with minimal information loss
-			Cluster minC = this.findFittingOldCluster(t.f0);
+			Cluster<T> minC = this.findFittingOldCluster(t.f0);
 
 			if(knnC != null){
 				if(minC != null && minC.infoLoss(this.globalBounds) < knnC.infoLoss(this.globalBounds)){
 					//release tuple with old cluster, that has minimal information loss
-					Tuple newT = minC.generalize(t.f0);
+					T newT = minC.generalize(t.f0);
 					this.toBeReleasedTuples.add(newT);
 				}else{
 					//release tuple with its k-1 NNs
 					for(int i = 0; i < neighbours.length; i++){
-						Tuple newT = knnC.generalize(neighbours[i].f0);
+						T newT = knnC.generalize(neighbours[i].f0);
 						this.bufferedTuples.remove(neighbours[i]); //remove the current tuple from the buffered tuples
 						this.toBeReleasedTuples.add(newT);
 					}
-					Tuple newT = knnC.generalize(t.f0);
+					T newT = knnC.generalize(t.f0);
 					this.toBeReleasedTuples.add(newT);
 				}
 			}else{
 				if(minC != null){
 					//release tuple with an old cluster, that has minimal information loss
-					Tuple newT = minC.generalize(t.f0);
+					T newT = minC.generalize(t.f0);
 					this.toBeReleasedTuples.add(newT);
 				}else{
 					//suppress tuple
-					Tuple newT = this.suppress(t.f0);
+					T newT = this.suppress(t.f0);
 					this.toBeReleasedTuples.add(newT);
 				}
 			}
@@ -156,21 +156,21 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 
 
 	//finds the k-1 NNs with unique PIDs of t
-	private Tuple2<Tuple, Long>[] knn(Tuple2<Tuple, Long> t){
-		Tuple3<Tuple2<Tuple, Long>, Tuple, Tuple2<Double, Double>[]>[] toBeSorted = new Tuple3[this.bufferedTuples.size()];
+	private Tuple2<T, Long>[] knn(T t){
+		Tuple3<Tuple2<T, Long>, T, Tuple2<Double, Double>[]>[] toBeSorted = new Tuple3[this.bufferedTuples.size()];
 
 		//retrieve and sort all the tuples by their distance to t
-		Iterator<Tuple2<Tuple, Long>> it = this.bufferedTuples.iterator();
+		Iterator<Tuple2<T, Long>> it = this.bufferedTuples.iterator();
 		int index = 0;
 		while(it.hasNext()){
 			toBeSorted[index] = new Tuple3(it.next(), t, this.globalBounds);
 			index++;
 		}
 
-		Arrays.sort(toBeSorted, new DistanceComparator()); //sorts the tuples other than t by their "distance" to t (Distance as defined in the FADS-paper)
+		Arrays.sort(toBeSorted, new DistanceComparator<T>()); //sorts the tuples other than t by their "distance" to t (Distance as defined in the FADS-paper)
 
 		//only take the k-1 with unique PID of the sorted ones
-		Tuple2<Tuple, Long>[] neighbours = new Tuple2[this.k - 1];
+		Tuple2<T, Long>[] neighbours = new Tuple2[this.k - 1];
 		int count = 0;
 		HashMap<Double, Boolean> uniqueKeys = new HashMap<>();
 		for(int i = 0; i < toBeSorted.length && count < this.k - 1; i++){
@@ -194,7 +194,7 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 
 	//finds amongst all buffered clusters the cluster that fits t and has minimal information loss
 	private Cluster findFittingOldCluster(Tuple t){
-		Iterator<Tuple2<Cluster, Long>> it = this.bufferedClusters.iterator();
+		Iterator<Tuple2<Cluster<T>, Long>> it = this.bufferedClusters.iterator();
 		Cluster minC = null;
 		while(it.hasNext()){
 			Cluster c = it.next().f0;
@@ -209,8 +209,8 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 	}
 
 	//returns a tuple, the entries of which correspond to the global bounds encountered during the whole processing duration
-	private Tuple suppress(Tuple t){
-		Tuple newT = Tuple.newInstance(t.getArity());
+	private T suppress(T t){
+		T newT = (T) Tuple.newInstance(t.getArity());
 		newT.setField(this.globalBounds[0], 0);
 
 		return newT;
@@ -224,9 +224,9 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 	}
 
 	//TODO: This is sooooooo uglyyy :(
-	static class DistanceComparator implements Comparator<Tuple3<Tuple2<Tuple, Long>, Tuple, Tuple2<Double, Double>[]>> {
+	static class DistanceComparator<T extends Tuple> implements Comparator<Tuple3<Tuple2<T, Long>, T, Tuple2<Double, Double>[]>> {
 
-		public int compare(Tuple3<Tuple2<Tuple, Long>, Tuple, Tuple2<Double, Double>[]> o1, Tuple3<Tuple2<Tuple, Long>, Tuple, Tuple2<Double, Double>[]> o2) {
+		public int compare(Tuple3<Tuple2<T, Long>, T, Tuple2<Double, Double>[]> o1, Tuple3<Tuple2<T, Long>, T, Tuple2<Double, Double>[]> o2) {
 			return (Math.abs((double)o1.f0.f0.getField(0) - (double)o1.f1.getField(0)) / o1.f2[0].f1 - o1.f2[0].f0) >
 					(Math.abs((double)o2.f0.f0.getField(0) - (double)o2.f1.getField(0)) / o2.f2[0].f1 - o2.f2[0].f0) ? 1 : -1;
 		}
