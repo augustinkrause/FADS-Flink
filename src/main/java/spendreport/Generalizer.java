@@ -24,27 +24,32 @@ import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
+import org.apache.flink.util.StringUtils;
 
+import java.io.IOException;
+import java.io.NotSerializableException;
+import java.io.ObjectStreamException;
+import java.io.Serializable;
 import java.util.*;
 
 /**
  *
  */
-public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
+public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> implements Serializable{
 
-	int k;
-	long bufferConstraint;
-	long reuseConstraint;
+	private int k;
+	private long bufferConstraint;
+	private long reuseConstraint;
 
-	int[] keys;
-	int pidKey;
+	private int[] keys;
+	private int pidKey;
 
-	Tuple2<Double, Double>[] globalBounds;
+	private Tuple2<Double, Double>[] globalBounds;
 
-	PriorityQueue<Tuple2<Tuple, Long>> bufferedTuples;
-	PriorityQueue<Tuple2<Cluster, Long>> bufferedClusters;
+	private PriorityQueue<Tuple2<Tuple, Long>> bufferedTuples;
+	private PriorityQueue<Tuple2<Cluster, Long>> bufferedClusters;
 
-	Stack<Tuple> toBeReleasedTuples = new Stack<>(); //during processing of the stream tuples will be added to this, at the end of processing the stack will be emptied
+	private Stack<Tuple> toBeReleasedTuples = new Stack<>(); //during processing of the stream tuples will be added to this, at the end of processing the stack will be emptied
 
 	public Generalizer(int k, long bufferConstraint, long reuseConstraint, int[] keys, int pidKey){
 		this.k = k;
@@ -55,8 +60,8 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 		this.keys = keys; //these are the indices of the fields to be considered QIDs
 		this.pidKey = pidKey;
 
-		bufferedTuples = new PriorityQueue<>(new EnrichedTupleComparator()); //so that our tuples are always sorted by our used notion of time
-		this.bufferedClusters = new PriorityQueue<Tuple2<Cluster, Long>>(new EnrichedTupleComparator());
+		this.bufferedTuples = new PriorityQueue<>(new EnrichedTupleComparator()); //so that our tuples are always sorted by our used notion of time
+		this.bufferedClusters = new PriorityQueue<>(new EnrichedTupleComparator());
 	}
 	// This hook is executed before the processing starts, kind of as a set-up
 	@Override
@@ -74,17 +79,19 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 		//buffer incoming tuple
 		bufferedTuples.add(element);
 
-		//update global bounds (TODO: For now we only support one key, at index 0)
-		if (this.globalBounds[0] == null) {
-			this.globalBounds[0] = new Tuple2<>(element.f0.getField(this.keys[0]), element.f0.getField(this.keys[0]));
-		}else{
-			if(this.globalBounds[0].f0 > (double) element.f0.getField(this.keys[0])) this.globalBounds[0].f0 = element.f0.getField(this.keys[0]);
-			if(this.globalBounds[0].f1 < (double) element.f0.getField(this.keys[0])) this.globalBounds[0].f1 = element.f0.getField(this.keys[0]);
+		//update global bounds
+		for(int i = 0; i < this.keys.length; i++){
+			if (this.globalBounds[i] == null) {
+				this.globalBounds[i] = new Tuple2<>(((Number) element.f0.getField(this.keys[i])).doubleValue(), ((Number) element.f0.getField(this.keys[i])).doubleValue());
+			}else{
+				if(this.globalBounds[i].f0 > ((Number) element.f0.getField(this.keys[i])).doubleValue()) this.globalBounds[i].f0 = ((Number) element.f0.getField(this.keys[i])).doubleValue();
+				if(this.globalBounds[i].f1 < ((Number) element.f0.getField(this.keys[i])).doubleValue()) this.globalBounds[i].f1 = ((Number) element.f0.getField(this.keys[i])).doubleValue();
+			}
 		}
 
 		//remove expired cluster(s)
-		while(!this.bufferedClusters.isEmpty()){
-			if(this.bufferedClusters.peek().f1 + this.reuseConstraint < System.currentTimeMillis()) this.bufferedClusters.poll();
+		while(!this.bufferedClusters.isEmpty() && this.bufferedClusters.peek().f1 + this.reuseConstraint < System.currentTimeMillis()){
+			this.bufferedClusters.poll();
 		}
 
 		//generalize oldest tuple if buffer constraint is exceeded
@@ -94,8 +101,12 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 
 		//release all tuples that have been generalized in the last round
 		while(!this.toBeReleasedTuples.isEmpty()){
+			System.out.println(this.toBeReleasedTuples.peek());
 			collector.collect(this.toBeReleasedTuples.pop());
+			//this.toBeReleasedTuples.remove(this.toBeReleasedTuples.size() - 1);
 		}
+
+		System.out.println(this.bufferedTuples.size());
 	}
 
 	//either releases a tuple along with the other tuples from its k-anonymized cluster, or the tuple gets suppressed and then released
@@ -138,6 +149,7 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 					}
 					Tuple newT = knnC.generalize(t.f0);
 					this.toBeReleasedTuples.add(newT);
+					this.bufferedClusters.add(new Tuple2<>(knnC, System.currentTimeMillis()));
 				}
 			}else{
 				if(minC != null){
@@ -150,24 +162,23 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 					this.toBeReleasedTuples.add(newT);
 				}
 			}
-
 		}
 	}
 
 
 	//finds the k-1 NNs with unique PIDs of t
 	public Tuple2<Tuple, Long>[] knn(Tuple2<Tuple, Long> t){
-		Tuple3<Tuple2<Tuple, Long>, Tuple, Tuple2<Double, Double>[]>[] toBeSorted = new Tuple3[this.bufferedTuples.size()];
+		Tuple2<Tuple, Long>[] toBeSorted = new Tuple2[this.bufferedTuples.size()];
 
 		//retrieve and sort all the tuples by their distance to t
 		Iterator<Tuple2<Tuple, Long>> it = this.bufferedTuples.iterator();
 		int index = 0;
 		while(it.hasNext()){
-			toBeSorted[index] = new Tuple3(it.next(), t, this.globalBounds);
+			toBeSorted[index] = it.next();
 			index++;
 		}
 
-		Arrays.sort(toBeSorted, new DistanceComparator()); //sorts the tuples other than t by their "distance" to t (Distance as defined in the FADS-paper)
+		Arrays.sort(toBeSorted, new DistanceComparator(t.f0, this.globalBounds)); //sorts the tuples other than t by their "distance" to t (Distance as defined in the FADS-paper)
 
 		//only take the k-1 with unique PID of the sorted ones
 		Tuple2<Tuple, Long>[] neighbours = new Tuple2[this.k - 1];
@@ -175,11 +186,11 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 		HashMap<Double, Boolean> uniqueKeys = new HashMap<>();
 		for(int i = 0; i < toBeSorted.length && count < this.k - 1; i++){
 			//only add the next tuple if it has a unique pid
-			if(!uniqueKeys.containsKey(toBeSorted[i].f0.f0.getField(this.pidKey))){
-				neighbours[count] = toBeSorted[i].f0;
-				uniqueKeys.put(toBeSorted[i].f0.f0.getField(this.pidKey), true);
-				count++;
-			}
+			//if(!uniqueKeys.containsKey(toBeSorted[i].f0.getField(this.pidKey))){
+			neighbours[count] = toBeSorted[i];
+			uniqueKeys.put(toBeSorted[i].f0.getField(this.pidKey), true);
+			count++;
+			//}
 		}
 
 		if(count == this.k - 1){
@@ -211,24 +222,96 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> {
 	//returns a tuple, the entries of which correspond to the global bounds encountered during the whole processing duration
 	public Tuple suppress(Tuple t){
 		Tuple newT = Tuple.newInstance(t.getArity());
-		newT.setField(this.globalBounds[0], 0);
+		//TODO: all the non-anonymized values are not being written into tuple
+		for(int i = 0; i < this.keys.length; i++){
+			newT.setField(this.globalBounds[i], this.keys[i]);
+		}
 
 		return newT;
 	}
 
-	static class EnrichedTupleComparator implements Comparator<Tuple2<?, Long>> {
+	//readObject, writeObject, readObjectNoData are functions that are called during serialization of instances of this class
+	private void writeObject(java.io.ObjectOutputStream out) throws IOException {
+		out.writeInt(this.k);
+		out.writeLong(this.bufferConstraint);
+		out.writeLong(this.reuseConstraint);
+
+		//writing an array requires first to write the length
+		out.writeInt(this.keys.length);
+		for(int i = 0; i < this.keys.length; i++){
+			out.writeInt(this.keys[i]);
+		}
+		out.writeInt(this.pidKey);
+
+		out.writeInt(this.globalBounds.length);
+		for(int i = 0; i < this.globalBounds.length; i++){
+			out.writeObject(this.globalBounds[i]);
+		}
+
+		out.writeObject(this.bufferedTuples);
+		out.writeObject(this.bufferedClusters);
+
+		out.writeObject(this.toBeReleasedTuples);
+	}
+
+	private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
+		this.k = in.readInt();
+		this.bufferConstraint = in.readLong();
+		this.reuseConstraint  = in.readLong();
+
+		//writing an array requires first to write the length
+		int len = in.readInt();
+		this.keys = new int[len];
+		for(int i = 0; i < len; i++){
+			this.keys[i] = in.readInt();
+		}
+		this.pidKey = in.readInt();
+
+		len = in.readInt();
+		this.globalBounds = new Tuple2[len];
+		for(int i = 0; i < len; i++){
+			this.globalBounds[i] = (Tuple2<Double, Double>) in.readObject();
+		}
+
+		this.bufferedTuples = (PriorityQueue<Tuple2<Tuple, Long>>) in.readObject();
+		this.bufferedClusters = (PriorityQueue<Tuple2<Cluster, Long>>) in.readObject();
+
+		this.toBeReleasedTuples = (Stack<Tuple>) in.readObject();
+	}
+
+	private void readObjectNoData() throws ObjectStreamException {
+		throw new NotSerializableException("Serialization error in class " + this.getClass().getName());
+	}
+
+	static class EnrichedTupleComparator implements Comparator<Tuple2<?, Long>>, Serializable {
 
 		public int compare(Tuple2<?, Long> o1, Tuple2<?, Long> o2) {
 			return o1.f1 > o2.f1 ? 1 : -1;
 		}
 	}
 
-	//TODO: This is sooooooo uglyyy :(
-	static class DistanceComparator implements Comparator<Tuple3<Tuple2<Tuple, Long>, Tuple, Tuple2<Double, Double>[]>> {
+	static class DistanceComparator implements Comparator<Tuple2<Tuple, Long>>{
 
-		public int compare(Tuple3<Tuple2<Tuple, Long>, Tuple, Tuple2<Double, Double>[]> o1, Tuple3<Tuple2<Tuple, Long>, Tuple, Tuple2<Double, Double>[]> o2) {
-			return (Math.abs((double)o1.f0.f0.getField(0) - (double)o1.f1.getField(0)) / o1.f2[0].f1 - o1.f2[0].f0) >
-					(Math.abs((double)o2.f0.f0.getField(0) - (double)o2.f1.getField(0)) / o2.f2[0].f1 - o2.f2[0].f0) ? 1 : -1;
+		Tuple pivot;
+		Tuple2<Double, Double>[] globalBounds;
+
+		public DistanceComparator(Tuple pivot, Tuple2<Double, Double>[] globalBounds){
+			this.pivot = pivot;
+			this.globalBounds = globalBounds;
+		}
+
+		//the distance between tuples, as defined in the paper, is the average distance over all to-be-anonymized attributes of the tuple
+		private double averageDistance(Tuple t){
+			double sum = 0;
+			for(int i = 0; i < this.globalBounds.length; i++){
+				sum += (Math.abs( ((Number)  t.getField(i)).doubleValue() - ((Number)  pivot.getField(i)).doubleValue()) / globalBounds[i].f1 - globalBounds[i].f0);
+			}
+
+			return sum/this.globalBounds.length;
+		}
+
+		public int compare(Tuple2<Tuple, Long> o1, Tuple2<Tuple, Long> o2) {
+			return (this.averageDistance(o1.f0) >= this.averageDistance(o2.f0)) ? 1 : -1;
 		}
 	}
 

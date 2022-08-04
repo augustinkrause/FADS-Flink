@@ -18,11 +18,14 @@
 
 package spendreport;
 
+import org.apache.flink.api.common.typeinfo.TypeHint;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.walkthrough.common.entity.Transaction;
@@ -42,12 +45,18 @@ public class TransactionGeneralizationJob {
 			.addSource(new TransactionSource())
 			.name("transactions");
 
-		int[] keys = new int[1];
+		int[] keys = new int[2];
 		keys[0] = 0;
-		DataStream<Tuple> generalizedTransactions = transactions
+		keys[1] = 1;
+
+		DataStream<Tuple2<Tuple, Long>> mappedTransactions = transactions
 			.map(value -> new Tuple2<Tuple, Long>(new Tuple3<>(value.getAmount(), value.getTimestamp(), value.getAccountId()), System.currentTimeMillis()))
-				.returns(Types.TUPLE()) //needed, bc in the lambda function type info gts lost
+			.returns(Types.TUPLE(Types.TUPLE(Types.DOUBLE, Types.LONG, Types.LONG), Types.LONG)) //needed, bc in the lambda function type info gts lost
+			.name("Mapping");
+
+		DataStream<Tuple> generalizedTransactions = mappedTransactions
 			.process(new Generalizer(10,30, 60000, keys, 2))
+				.returns(Types.TUPLE())
 			.name("Generalizer");
 
 		/*alerts
