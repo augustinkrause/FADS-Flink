@@ -18,20 +18,12 @@
 
 package spendreport;
 
-import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
-import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.tuple.Tuple3;
-import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.walkthrough.common.entity.Transaction;
-import org.apache.flink.walkthrough.common.source.TransactionSource;
-
-import java.util.ArrayList;
 
 /**
  * Skeleton code for the datastream walkthrough
@@ -41,22 +33,34 @@ public class TransactionGeneralizationJob {
 	public static void main(String[] args) throws Exception {
 		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-		DataStream<Transaction> transactions = env
-			.addSource(new TransactionSource())
-			.name("transactions");
+		DataStream<String> lines = env
+				.readTextFile("/Users/Augustin/Desktop/augustin/uni/ROC/project/data/database/part_s.tbl")
+				.name("Read data");
 
-		int[] keys = new int[2];
-		keys[0] = 0;
-		keys[1] = 1;
+		TypeInformation[] types = new TypeInformation[9];
+		types[0] = Types.INT;
+		types[1] = Types.STRING;
+		types[2] = Types.STRING;
+		types[3] = Types.STRING;
+		types[4] = Types.STRING;
+		types[5] = Types.INT;
+		types[6] = Types.STRING;
+		types[7] = Types.DOUBLE;
+		types[8] = Types.STRING;
+		DataStream<Tuple> tuples = lines
+				.map(new CSVParser(9, types, "|"))
+				.name("parsing");
 
-		DataStream<Tuple2<Tuple, Long>> mappedTransactions = transactions
-			.map(value -> new Tuple2<Tuple, Long>(new Tuple3<>(value.getAmount(), value.getTimestamp(), value.getAccountId()), System.currentTimeMillis()))
-			.returns(Types.TUPLE(Types.TUPLE(Types.DOUBLE, Types.LONG, Types.LONG), Types.LONG)) //needed, bc in the lambda function type info gts lost
-			.name("Mapping");
+		DataStream<Tuple2<Tuple, Long>> enrichedTuples = tuples
+				.map(value -> new Tuple2<>(value, System.currentTimeMillis()))
+				.returns(Types.TUPLE(Types.TUPLE(types), Types.LONG)) //needed, bc in the lambda function type info gts lost
+				.name("Enrich with timestamp");
 
-		DataStream<Tuple> generalizedTransactions = mappedTransactions
-			.process(new Generalizer(10,30, 60000, keys, 2))
-				.returns(Types.TUPLE())
+		int[] keys = new int[1];
+		keys[0] = 5;
+
+		DataStream<Tuple> generalizedTransactions = enrichedTuples
+			.process(new Generalizer(10,30, 60000, keys, 2, types))
 			.name("Generalizer");
 
 		/*alerts

@@ -18,13 +18,14 @@
 
 package spendreport;
 
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
-import org.apache.flink.util.StringUtils;
 
 import java.io.IOException;
 import java.io.NotSerializableException;
@@ -35,7 +36,7 @@ import java.util.*;
 /**
  *
  */
-public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> implements Serializable{
+public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> implements Serializable, ResultTypeQueryable {
 
 	private int k;
 	private long bufferConstraint;
@@ -51,7 +52,28 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> imp
 
 	private Stack<Tuple> toBeReleasedTuples = new Stack<>(); //during processing of the stream tuples will be added to this, at the end of processing the stack will be emptied
 
-	public Generalizer(int k, long bufferConstraint, long reuseConstraint, int[] keys, int pidKey){
+	private TypeInformation[] types;
+
+	private Collector<Tuple> collector; //TODO: For now only a test
+
+	@Override
+	public void close(){
+
+		//release remaining tuples
+		while(!this.bufferedTuples.isEmpty()){
+			this.generalizeTuple(this.bufferedTuples.poll());
+		}
+
+		//release all tuples that have been generalized in the last round
+		while(!this.toBeReleasedTuples.isEmpty()){
+			System.out.println(this.toBeReleasedTuples.peek());
+			this.collector.collect(this.toBeReleasedTuples.pop());
+			//this.toBeReleasedTuples.remove(this.toBeReleasedTuples.size() - 1);
+		}
+
+	}
+
+	public Generalizer(int k, long bufferConstraint, long reuseConstraint, int[] keys, int pidKey, TypeInformation[] types){
 		this.k = k;
 		this.bufferConstraint = bufferConstraint; //how long can a tuple stay at max in the buffer, before being released
 		this.reuseConstraint = reuseConstraint; //how long can a cluster be reused
@@ -62,6 +84,8 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> imp
 
 		this.bufferedTuples = new PriorityQueue<>(new EnrichedTupleComparator()); //so that our tuples are always sorted by our used notion of time
 		this.bufferedClusters = new PriorityQueue<>(new EnrichedTupleComparator());
+
+		this.types = types;
 	}
 	// This hook is executed before the processing starts, kind of as a set-up
 	@Override
@@ -75,6 +99,7 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> imp
 			Tuple2<Tuple, Long> element,
 			Context context,
 			Collector<Tuple> collector) throws Exception {
+		this.collector = collector;
 
 		//buffer incoming tuple
 		bufferedTuples.add(element);
@@ -222,12 +247,27 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> imp
 	//returns a tuple, the entries of which correspond to the global bounds encountered during the whole processing duration
 	public Tuple suppress(Tuple t){
 		Tuple newT = Tuple.newInstance(t.getArity());
-		//TODO: all the non-anonymized values are not being written into tuple
 		for(int i = 0; i < this.keys.length; i++){
 			newT.setField(this.globalBounds[i], this.keys[i]);
 		}
 
+		for(int i = 0; i < t.getArity(); i++){
+			if(newT.getField(i) == null) newT.setField(t.getField(i), i);
+		}
+
 		return newT;
+	}
+
+	@Override
+	public TypeInformation getProducedType() {
+		TypeInformation[] outputTypes = new TypeInformation[this.types.length];
+		for(int i = 0; i < this.keys.length; i++){
+			outputTypes[this.keys[i]] = Types.TUPLE(Types.DOUBLE, Types.DOUBLE);
+		}
+		for(int i = 0; i < this.types.length; i++){
+			if(outputTypes[i] == null) outputTypes[i] = this.types[i];
+		}
+		return Types.TUPLE(outputTypes);
 	}
 
 	//readObject, writeObject, readObjectNoData are functions that are called during serialization of instances of this class
@@ -252,6 +292,11 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> imp
 		out.writeObject(this.bufferedClusters);
 
 		out.writeObject(this.toBeReleasedTuples);
+
+		out.writeInt(this.types.length);
+		for(int i = 0; i < this.types.length; i++){
+			out.writeObject(this.types[i]);
+		}
 	}
 
 	private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
@@ -277,6 +322,12 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> imp
 		this.bufferedClusters = (PriorityQueue<Tuple2<Cluster, Long>>) in.readObject();
 
 		this.toBeReleasedTuples = (Stack<Tuple>) in.readObject();
+
+		len = in.readInt();
+		this.types = new TypeInformation[len];
+		for(int i = 0; i < len; i++){
+			this.types[i] = (TypeInformation) in.readObject();
+		}
 	}
 
 	private void readObjectNoData() throws ObjectStreamException {

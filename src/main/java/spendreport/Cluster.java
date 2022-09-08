@@ -25,8 +25,8 @@ public class Cluster implements Serializable{
             double currMin = Double.POSITIVE_INFINITY;
             double currMax = Double.NEGATIVE_INFINITY;
             for(int j = 0; j < tuples.length; j++){
-                if(currMin > ((Number) tuples[j].getField(i)).doubleValue()) currMin = ((Number) tuples[j].getField(i)).doubleValue(); //update minimum
-                if(currMax < ((Number) tuples[j].getField(i)).doubleValue()) currMax = ((Number) tuples[j].getField(i)).doubleValue(); //update maximum
+                if(currMin > ((Number) tuples[j].getField(this.keys[i])).doubleValue()) currMin = ((Number) tuples[j].getField(this.keys[i])).doubleValue(); //update minimum
+                if(currMax < ((Number) tuples[j].getField(this.keys[i])).doubleValue()) currMax = ((Number) tuples[j].getField(this.keys[i])).doubleValue(); //update maximum
             }
 
             this.bounds[i] = new Tuple2<>(currMin, currMax);
@@ -43,8 +43,8 @@ public class Cluster implements Serializable{
             double currMin = Double.POSITIVE_INFINITY;
             double currMax = Double.NEGATIVE_INFINITY;
             for(int j = 0; j < tuples.length; j++){
-                if(currMin > ((Number)  tuples[j].f0.getField(i)).doubleValue()) currMin = ((Number) tuples[j].f0.getField(i)).doubleValue(); //update minimum
-                if(currMax < ((Number) tuples[j].f0.getField(i)).doubleValue()) currMax = ((Number) tuples[j].f0.getField(i)).doubleValue(); //update maximum
+                if(currMin > ((Number)  tuples[j].f0.getField(this.keys[i])).doubleValue()) currMin = ((Number) tuples[j].f0.getField(this.keys[i])).doubleValue(); //update minimum
+                if(currMax < ((Number) tuples[j].f0.getField(this.keys[i])).doubleValue()) currMax = ((Number) tuples[j].f0.getField(this.keys[i])).doubleValue(); //update maximum
             }
 
             this.bounds[i] = new Tuple2<>(currMin, currMax);
@@ -66,7 +66,11 @@ public class Cluster implements Serializable{
         Tuple newT = Tuple.newInstance(t.getArity());
 
         for(int i = 0; i < this.keys.length; i++){
-            newT.setField(this.bounds[i], i);
+            newT.setField(this.bounds[i], this.keys[i]);
+        }
+
+        for(int i = 0; i < t.getArity(); i++){
+            if(newT.getField(i) == null) newT.setField(t.getField(i), i);
         }
 
         return newT;
