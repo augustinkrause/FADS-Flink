@@ -47,20 +47,31 @@ public class TransactionGeneralizationJob {
 		types[6] = Types.STRING;
 		types[7] = Types.DOUBLE;
 		types[8] = Types.STRING;
+		boolean addPID = true;
 		DataStream<Tuple> tuples = lines
-				.map(new CSVParser(9, types, "|"))
+				.map(new CSVParser(9, types, "|", addPID, -1))
 				.name("parsing");
 
+		TypeInformation[] returnTypes;
+		if(addPID){
+			returnTypes = new TypeInformation[types.length + 1];
+			returnTypes[0] = Types.INT;
+			for(int i = 0; i < types.length; i++){
+				returnTypes[i + 1] = types[i];
+			}
+		}else{
+			returnTypes = types;
+		}
 		DataStream<Tuple2<Tuple, Long>> enrichedTuples = tuples
 				.map(value -> new Tuple2<>(value, System.currentTimeMillis()))
-				.returns(Types.TUPLE(Types.TUPLE(types), Types.LONG)) //needed, bc in the lambda function type info gts lost
+				.returns(Types.TUPLE(Types.TUPLE(returnTypes), Types.LONG)) //needed, bc in the lambda function type info gts lost
 				.name("Enrich with timestamp");
 
 		int[] keys = new int[1];
-		keys[0] = 5;
+		keys[0] = 6;
 
 		DataStream<Tuple> generalizedTransactions = enrichedTuples
-			.process(new Generalizer(10,30, 60000, keys, 2, types))
+			.process(new Generalizer(10,30, 60000, keys, 0, returnTypes))
 			.name("Generalizer");
 
 		/*alerts

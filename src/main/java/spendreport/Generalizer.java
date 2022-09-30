@@ -211,11 +211,11 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> imp
 		HashMap<Double, Boolean> uniqueKeys = new HashMap<>();
 		for(int i = 0; i < toBeSorted.length && count < this.k - 1; i++){
 			//only add the next tuple if it has a unique pid
-			//if(!uniqueKeys.containsKey(toBeSorted[i].f0.getField(this.pidKey))){
-			neighbours[count] = toBeSorted[i];
-			uniqueKeys.put(toBeSorted[i].f0.getField(this.pidKey), true);
-			count++;
-			//}
+			if(!uniqueKeys.containsKey(toBeSorted[i].f0.getField(this.pidKey))){
+				neighbours[count] = toBeSorted[i];
+				uniqueKeys.put(toBeSorted[i].f0.getField(this.pidKey), true);
+				count++;
+			}
 		}
 
 		if(count == this.k - 1){
