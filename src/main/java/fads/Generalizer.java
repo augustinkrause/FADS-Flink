@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package spendreport;
+package fads;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
@@ -130,8 +130,6 @@ public class Generalizer extends ProcessFunction<Tuple2<Tuple, Long>, Tuple> imp
 			collector.collect(this.toBeReleasedTuples.pop());
 			//this.toBeReleasedTuples.remove(this.toBeReleasedTuples.size() - 1);
 		}
-
-		System.out.println(this.bufferedTuples.size());
 	}
 
 	//either releases a tuple along with the other tuples from its k-anonymized cluster, or the tuple gets suppressed and then released

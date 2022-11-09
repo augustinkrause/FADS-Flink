@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package spendreport;
+package fads;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
@@ -67,8 +67,9 @@ public class TransactionGeneralizationJob {
 				.returns(Types.TUPLE(Types.TUPLE(returnTypes), Types.LONG)) //needed, bc in the lambda function type info gts lost
 				.name("Enrich with timestamp");
 
-		int[] keys = new int[1];
+		int[] keys = new int[2];
 		keys[0] = 6;
+		keys[1] = 8;
 
 		DataStream<Tuple> generalizedTransactions = enrichedTuples
 			.process(new Generalizer(10,30, 60000, keys, 0, returnTypes))

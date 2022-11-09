@@ -1,4 +1,4 @@
-package spendreport;
+package fads;
 
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
