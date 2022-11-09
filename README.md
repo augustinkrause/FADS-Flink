@@ -1,5 +1,5 @@
 
-# Fads-Flink
+# FADS-Flink
 
 This is an implementation of the [FADS-k-anonymization](https://www.sciencedirect.com/science/article/abs/pii/S0950705113000877) framework meant for data streams. It stems from my bachelor's thesis at [TUB](https://www.tu.berlin/).  
 The aims of this thesis were to:  
