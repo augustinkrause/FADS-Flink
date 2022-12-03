@@ -18,12 +18,14 @@
 
 package fads;
 
+import datasources.NYCTaxiRideSource;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import throughputUtils.ParallelThroughputLogger;
 
 /**
  * Skeleton code for the datastream walkthrough
@@ -33,46 +35,40 @@ public class TransactionGeneralizationJob {
 	public static void main(String[] args) throws Exception {
 		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-		DataStream<String> lines = env
-				.readTextFile("/Users/Augustin/Desktop/augustin/uni/ROC/project/data/database/part_s.tbl")
-				.name("Read data");
+		// Initialize NYCTaxi DataSource
+		DataStream<Tuple> messageStream = env
+				.addSource(new NYCTaxiRideSource(60000, 1000)).setParallelism(1); //runtime of -1 means throughput/sec
 
-		TypeInformation[] types = new TypeInformation[9];
-		types[0] = Types.INT;
-		types[1] = Types.STRING;
-		types[2] = Types.STRING;
-		types[3] = Types.STRING;
-		types[4] = Types.STRING;
-		types[5] = Types.INT;
-		types[6] = Types.STRING;
+		TypeInformation[] types = new TypeInformation[11];
+		types[0] = Types.LONG;
+		types[1] = Types.LONG;
+		types[2] = Types.LONG;
+		types[3] = Types.BOOLEAN;
+		types[4] = Types.LONG;
+		types[5] = Types.LONG;
+		types[6] = Types.DOUBLE;
 		types[7] = Types.DOUBLE;
-		types[8] = Types.STRING;
-		boolean addPID = true;
-		DataStream<Tuple> tuples = lines
-				.map(new CSVParser(9, types, "|", addPID, -1))
-				.name("parsing");
+		types[8] = Types.DOUBLE;
+		types[9] = Types.DOUBLE;
+		types[10] = Types.SHORT;
+		/*DataStream<Tuple> tuples = lines
+				.map(new CSVParser(9, types, "|", false, 1000))
+				.name("parsing");*/
 
-		TypeInformation[] returnTypes;
-		if(addPID){
-			returnTypes = new TypeInformation[types.length + 1];
-			returnTypes[0] = Types.INT;
-			for(int i = 0; i < types.length; i++){
-				returnTypes[i + 1] = types[i];
-			}
-		}else{
-			returnTypes = types;
-		}
-		DataStream<Tuple2<Tuple, Long>> enrichedTuples = tuples
+		DataStream<Tuple2<Tuple, Long>> enrichedTuples = messageStream
 				.map(value -> new Tuple2<>(value, System.currentTimeMillis()))
-				.returns(Types.TUPLE(Types.TUPLE(returnTypes), Types.LONG)) //needed, bc in the lambda function type info gts lost
+				.returns(Types.TUPLE(Types.TUPLE(types), Types.LONG)) //needed, bc in the lambda function type info gts lost
 				.name("Enrich with timestamp");
 
-		int[] keys = new int[2];
-		keys[0] = 6;
-		keys[1] = 8;
+		DataStream<Tuple2<Tuple, Long>> streamWithLogger = enrichedTuples
+				.flatMap(new ParallelThroughputLogger<>(1000, "ThroughputLogger"));
 
-		DataStream<Tuple> generalizedTransactions = enrichedTuples
-			.process(new Generalizer(10,30, 60000, keys, 0, returnTypes))
+		int[] keys = new int[3];
+		keys[0] = 0;
+		keys[1] = 1;
+		keys[2] = 5;
+		DataStream<Tuple> generalizedTransactions = streamWithLogger
+			.process(new Generalizer(10,30, 60000, keys, 0, types))
 			.name("Generalizer");
 
 		/*alerts

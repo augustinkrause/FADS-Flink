@@ -1,3 +1,8 @@
-/Users/Augustin/Desktop/augustin/uni/Bachelor Thesis/flink-1.14.4/own_projects/secondTest/FADS-Flink/src/main/java/spendreport/TransactionGeneralizationJob.java
-/Users/Augustin/Desktop/augustin/uni/Bachelor Thesis/flink-1.14.4/own_projects/secondTest/FADS-Flink/src/main/java/spendreport/Generalizer.java
-/Users/Augustin/Desktop/augustin/uni/Bachelor Thesis/flink-1.14.4/own_projects/secondTest/FADS-Flink/src/main/java/spendreport/Cluster.java
+/Users/Augustin/Desktop/augustin/uni/Bachelor Thesis/flink-1.14.4/own_projects/secondTest/FADS-Flink/src/main/java/fads/CSVParser.java
+/Users/Augustin/Desktop/augustin/uni/Bachelor Thesis/flink-1.14.4/own_projects/secondTest/FADS-Flink/src/main/java/fads/Cluster.java
+/Users/Augustin/Desktop/augustin/uni/Bachelor Thesis/flink-1.14.4/own_projects/secondTest/FADS-Flink/src/main/java/throughputUtils/ParallelThroughputStatistics.java
+/Users/Augustin/Desktop/augustin/uni/Bachelor Thesis/flink-1.14.4/own_projects/secondTest/FADS-Flink/src/main/java/throughputUtils/ThroughputStatistics.java
+/Users/Augustin/Desktop/augustin/uni/Bachelor Thesis/flink-1.14.4/own_projects/secondTest/FADS-Flink/src/main/java/datasources/NYCTaxiRideSource.java
+/Users/Augustin/Desktop/augustin/uni/Bachelor Thesis/flink-1.14.4/own_projects/secondTest/FADS-Flink/src/main/java/fads/Generalizer.java
+/Users/Augustin/Desktop/augustin/uni/Bachelor Thesis/flink-1.14.4/own_projects/secondTest/FADS-Flink/src/main/java/fads/TransactionGeneralizationJob.java
+/Users/Augustin/Desktop/augustin/uni/Bachelor Thesis/flink-1.14.4/own_projects/secondTest/FADS-Flink/src/main/java/throughputUtils/ParallelThroughputLogger.java
