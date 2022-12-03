@@ -1,4 +1,10 @@
-spendreport/TransactionGeneralizationJob.class
-spendreport/Generalizer.class
-spendreport/Cluster.class
-spendreport/CSVParser.class
+fads/Generalizer$EnrichedTupleComparator.class
+throughputUtils/ThroughputStatistics.class
+throughputUtils/ParallelThroughputLogger.class
+datasources/NYCTaxiRideSource.class
+fads/TransactionGeneralizationJob.class
+fads/Generalizer$DistanceComparator.class
+fads/Generalizer.class
+throughputUtils/ParallelThroughputStatistics.class
+fads/Cluster.class
+fads/CSVParser.class
